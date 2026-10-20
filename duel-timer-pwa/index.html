@@ -1,0 +1,897 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<meta name="theme-color" content="#0a0e14" />
+<meta name="application-name" content="Time Debt Clock" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="TimeDebt" />
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="icon" type="image/svg+xml" href="icons/favicon.svg" />
+<link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon-180.png" />
+<title>Time Debt Clock</title>
+<style>
+  /* ============ Design tokens ============ */
+  :root {
+    --bg:        #0a0e14;
+    --surface:   #121826;
+    --surface-2: #1a2233;
+    --border:    #26314a;
+    --border-2:  #34425f;
+    --primary:   #3b82f6;   /* electric blue */
+    --active:    #22d3ee;   /* cyan glow for ACTIVE */
+    --ink:       #e8eefc;
+    --muted:     #8a97b3;
+
+    --radius-sm: 10px;
+    --radius:    14px;
+    --radius-lg: 20px;
+
+    --sp-1: 4px;
+    --sp-2: 8px;
+    --sp-3: 12px;
+    --sp-4: 16px;
+    --sp-5: 24px;
+    --sp-6: 32px;
+
+    --shadow-1: 0 1px 2px rgba(0,0,0,.4), 0 2px 8px rgba(0,0,0,.35);
+    --shadow-2: 0 8px 24px rgba(0,0,0,.45), 0 2px 8px rgba(0,0,0,.4);
+    --shadow-3: 0 24px 60px rgba(0,0,0,.6), 0 8px 20px rgba(0,0,0,.5);
+
+    --ring: 0 0 0 3px rgba(59,130,246,.45);
+    --ease: cubic-bezier(.4,0,.2,1);
+  }
+
+  /* ============ Reset ============ */
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; background: var(--bg); }
+  button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; }
+  :focus { outline: none; }
+  :focus-visible { outline: none; box-shadow: var(--ring); }
+
+  /* ============ App root (fullscreen target) ============ */
+  #app {
+    height: 100vh; height: 100dvh;
+    display: flex; flex-direction: column;
+    background:
+      radial-gradient(1200px 600px at 50% -10%, #16203a 0%, transparent 60%),
+      var(--bg);
+    color: var(--ink);
+    font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    touch-action: manipulation;
+    user-select: none; -webkit-user-select: none;
+    overscroll-behavior: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #app:fullscreen,
+  #app:-webkit-full-screen {
+    width: 100%; height: 100%;
+    background:
+      radial-gradient(1200px 600px at 50% -10%, #16203a 0%, transparent 60%),
+      var(--bg);
+  }
+  html:fullscreen, body:fullscreen { background: var(--bg); }
+  #app::backdrop, html::backdrop { background: var(--bg); }
+
+  /* ============ Top action bar (sticky, collapsible) ============ */
+  #top {
+    position: sticky; top: 0; z-index: 40;
+    flex: 0 0 auto;
+    max-height: 220px; overflow: hidden;
+    display: flex; align-items: center; justify-content: center; gap: var(--sp-2);
+    padding: calc(var(--sp-3) + env(safe-area-inset-top)) var(--sp-3) var(--sp-3);
+    background: color-mix(in srgb, var(--surface) 78%, transparent);
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+    transition: max-height .32s var(--ease), opacity .25s var(--ease),
+                padding .32s var(--ease), border-color .32s var(--ease),
+                background .32s var(--ease);
+  }
+  #app.menu-hidden #top {
+    max-height: 0; opacity: 0; pointer-events: none;
+    padding-top: 0; padding-bottom: 0;
+    background: transparent; border-bottom-color: transparent;
+    backdrop-filter: none; -webkit-backdrop-filter: none;
+  }
+  .tool {
+    width: 46px; height: 46px;
+    display: grid; place-items: center;
+    font-size: 20px; line-height: 1;
+    color: var(--ink);
+    background: var(--surface-2);
+    border: 1px solid var(--border-2);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-1);
+    transition: transform .15s var(--ease), background .15s var(--ease),
+                border-color .15s var(--ease), box-shadow .15s var(--ease);
+  }
+  .tool:hover { background: #202a3f; border-color: var(--primary); }
+  .tool:active { transform: translateY(1px) scale(.97); box-shadow: none; }
+
+  #thresholdBtn {
+    width: auto; min-width: 84px; padding: 0 var(--sp-4);
+    font-size: 17px; font-weight: 700; letter-spacing: .02em;
+    color: #06122b;
+    background: linear-gradient(180deg, #60a5fa, var(--primary));
+    border-color: #2563eb;
+    font-variant-numeric: tabular-nums;
+  }
+  #thresholdBtn:hover { background: linear-gradient(180deg, #7cb1fb, #2f76e6); }
+
+  #revealBtn {
+    position: fixed; z-index: 60;
+    left: calc(10px + env(safe-area-inset-left));
+    top: calc(10px + env(safe-area-inset-top));
+    width: 40px; height: 40px; border-radius: 999px;
+    display: grid; place-items: center; font-size: 18px; line-height: 1;
+    color: var(--ink);
+    background: color-mix(in srgb, var(--surface) 82%, transparent);
+    border: 1px solid var(--border-2);
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    box-shadow: var(--shadow-2);
+    opacity: 0; pointer-events: none; transform: scale(.6);
+    transition: opacity .25s var(--ease), transform .25s var(--ease), background .15s var(--ease);
+  }
+  #app.menu-hidden #revealBtn { opacity: .85; pointer-events: auto; transform: none; }
+  #revealBtn:hover { background: #202a3f; }
+  #revealBtn:active { transform: scale(.9); }
+
+  /* ============ Main split: TOP/BOTTOM on phones, left/right in landscape ============ */
+  #main {
+    flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 2px;
+    padding-top: 0; transition: padding-top .32s var(--ease);
+  }
+  #app.menu-hidden #main { padding-top: env(safe-area-inset-top); }
+  @media (orientation: landscape) {
+    #main { flex-direction: row; }
+  }
+
+  .side {
+    position: relative; flex: 1; min-width: 0; min-height: 0;
+    overflow: hidden;
+    border: 4px solid transparent;
+    border-radius: 4px;
+    background: var(--side-bg, hsl(120 70% 52%));
+    color: var(--side-ink, #0b1220);
+    transition: background .35s var(--ease), border-color .25s var(--ease), box-shadow .25s var(--ease);
+  }
+  .side.active {
+    border-color: var(--active);
+    box-shadow:
+      inset 0 0 0 2px rgba(34,211,238,.35),
+      inset 0 0 32px rgba(34,211,238,.28),
+      0 0 26px rgba(34,211,238,.35);
+  }
+
+  .side-inner {
+    position: absolute; left: 50%; top: 50%;
+    width: 100%; height: 100%;
+    transform: translate(-50%, -50%);
+    transform-origin: center center;
+    z-index: 1;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: clamp(8px, 3.5vh, 22px);
+    padding: clamp(10px, 3vh, 28px);
+    overflow: hidden;
+  }
+
+  .active-label {
+    position: absolute; top: var(--sp-3); left: 50%; transform: translateX(-50%);
+    font-size: 11px; font-weight: 800; letter-spacing: .22em;
+    color: var(--active);
+    padding: 4px 10px; border-radius: 999px;
+    background: rgba(34,211,238,.14);
+    border: 1px solid rgba(34,211,238,.4);
+    opacity: 0; transition: opacity .2s var(--ease);
+  }
+  .side.active .active-label { opacity: 1; }
+
+  .hp-row { display: flex; align-items: center; justify-content: center; gap: clamp(10px, 3vh, 24px); }
+  .hp-btn {
+    width: clamp(44px, 11vh, 76px); height: clamp(44px, 11vh, 76px);
+    font-size: clamp(1.4rem, 6vh, 2.6rem); font-weight: 800; line-height: 1;
+    color: inherit;
+    background: color-mix(in srgb, currentColor 14%, transparent);
+    border: 1.5px solid color-mix(in srgb, currentColor 45%, transparent);
+    border-radius: var(--radius);
+    backdrop-filter: blur(4px);
+    box-shadow: var(--shadow-1);
+    transition: transform .12s var(--ease), background .15s var(--ease), box-shadow .15s var(--ease);
+  }
+  .hp-btn:hover { background: color-mix(in srgb, currentColor 24%, transparent); box-shadow: var(--shadow-2); }
+  .hp-btn:active { transform: scale(.9); }
+
+  .hp {
+    font-size: clamp(2.2rem, 13vh, 9rem);
+    line-height: .9; font-weight: 800; letter-spacing: -.04em;
+    min-width: 1ch; text-align: center;
+    font-variant-numeric: tabular-nums;
+    text-shadow: 0 2px 14px rgba(0,0,0,.25);
+  }
+
+  .lives { display: flex; gap: var(--sp-2); }
+  .life {
+    width: clamp(10px, 4vh, 18px); height: clamp(10px, 4vh, 18px);
+    border-radius: 50%;
+    background: currentColor;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.25), 0 1px 2px rgba(0,0,0,.3);
+    transition: background .2s var(--ease), transform .2s var(--ease);
+  }
+  .life.lost {
+    background: transparent;
+    box-shadow: inset 0 0 0 1.5px color-mix(in srgb, currentColor 40%, transparent);
+    transform: scale(.92);
+  }
+
+  .clocks { display: flex; flex-direction: column; align-items: center; gap: var(--sp-1); }
+  .total {
+    font-size: clamp(.9rem, 5vh, 2.2rem); font-weight: 600;
+    color: color-mix(in srgb, currentColor 78%, transparent);
+    font-variant-numeric: tabular-nums;
+  }
+  .debt {
+    font-size: clamp(1rem, 5.5vh, 2.6rem); font-weight: 800;
+    letter-spacing: .01em; min-height: 1.2em;
+    font-variant-numeric: tabular-nums;
+    text-shadow: 0 1px 10px rgba(0,0,0,.2);
+  }
+
+  .rotate {
+    position: absolute; top: var(--sp-3); right: var(--sp-3); z-index: 5;
+    width: clamp(36px, 9vh, 48px); height: clamp(36px, 9vh, 48px); border-radius: 50%;
+    display: grid; place-items: center; font-size: clamp(14px, 4vh, 20px); color: inherit;
+    background: color-mix(in srgb, currentColor 16%, transparent);
+    border: 1.5px solid color-mix(in srgb, currentColor 40%, transparent);
+    backdrop-filter: blur(4px);
+    box-shadow: var(--shadow-1);
+    transition: transform .25s var(--ease), background .15s var(--ease);
+  }
+  .rotate:hover { background: color-mix(in srgb, currentColor 28%, transparent); }
+  .rotate:active { transform: scale(.9) rotate(45deg); }
+
+  .gameover {
+    position: absolute; inset: 0; display: none;
+    align-items: center; justify-content: center; z-index: 20;
+    font-size: clamp(1.8rem, 12vh, 7rem); font-weight: 800; letter-spacing: -.02em;
+    background: color-mix(in srgb, var(--surface) 55%, transparent);
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    text-align: center;
+  }
+  .side.winner .gameover, .side.loser .gameover { display: flex; }
+  .side.winner .gameover { color: #16a34a; text-shadow: 0 2px 20px rgba(22,163,74,.4); }
+  .side.loser  .gameover { color: #dc2626; text-shadow: 0 2px 20px rgba(220,38,38,.4); }
+
+  @supports (container-type: size) {
+    .side { container-type: size; }
+    .side-inner { gap: clamp(8px, 4cqh, 22px); padding: clamp(10px, 4cqh, 28px); }
+    .hp-row { gap: clamp(10px, 5cqh, 24px); }
+    .hp-btn { width: clamp(42px, 22cqh, 76px); height: clamp(42px, 22cqh, 76px); font-size: clamp(1.3rem, 13cqh, 2.6rem); }
+    .hp { font-size: clamp(2.2rem, 26cqh, 9rem); }
+    .life { width: clamp(9px, 4.5cqh, 18px); height: clamp(9px, 4.5cqh, 18px); }
+    .total { font-size: clamp(.9rem, 7.5cqh, 2.2rem); }
+    .debt { font-size: clamp(1rem, 8.5cqh, 2.6rem); }
+    .rotate { width: clamp(36px, 11cqh, 48px); height: clamp(36px, 11cqh, 48px); font-size: clamp(14px, 5cqh, 20px); }
+    .gameover { font-size: clamp(1.8rem, 16cqh, 7rem); }
+    .active-label { font-size: clamp(9px, 3cqh, 12px); }
+  }
+
+  /* ============ Modal panels ============ */
+  #soundPanel, #customPanel {
+    position: fixed; inset: 0; display: none;
+    align-items: center; justify-content: center;
+    background: rgba(4,7,13,.6);
+    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+    z-index: 100; padding: var(--sp-4);
+  }
+  .panel {
+    width: min(92vw, 380px);
+    background: var(--surface);
+    border: 1px solid var(--border-2);
+    border-radius: var(--radius-lg);
+    padding: var(--sp-5);
+    box-shadow: var(--shadow-3);
+  }
+  .panel h3 {
+    margin: 0 0 var(--sp-4);
+    font-size: 13px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--muted);
+  }
+  .row {
+    display: flex; justify-content: space-between; align-items: center; gap: var(--sp-4);
+    padding: var(--sp-3) 0; font-size: 15px; font-weight: 500;
+    border-bottom: 1px solid var(--border);
+  }
+  .row:last-of-type { border-bottom: 0; }
+
+  input[type="checkbox"] {
+    appearance: none; -webkit-appearance: none; margin: 0;
+    width: 46px; height: 27px; border-radius: 999px;
+    background: var(--surface-2); border: 1px solid var(--border-2);
+    position: relative; cursor: pointer; flex: 0 0 auto;
+    transition: background .2s var(--ease), border-color .2s var(--ease);
+  }
+  input[type="checkbox"]::after {
+    content: ""; position: absolute; top: 2px; left: 2px;
+    width: 21px; height: 21px; border-radius: 50%;
+    background: var(--muted);
+    transition: transform .2s var(--ease), background .2s var(--ease);
+  }
+  input[type="checkbox"]:checked { background: var(--primary); border-color: var(--primary); }
+  input[type="checkbox"]:checked::after { transform: translateX(19px); background: #fff; }
+  input[type="checkbox"]:disabled { opacity: .4; cursor: not-allowed; }
+  input[type="checkbox"]:focus-visible { box-shadow: var(--ring); }
+
+  .panel button {
+    min-height: 46px; padding: 0 var(--sp-5);
+    border-radius: var(--radius-sm); font-size: 15px; font-weight: 700;
+    color: var(--ink); background: var(--surface-2);
+    border: 1px solid var(--border-2);
+    transition: transform .12s var(--ease), background .15s var(--ease);
+  }
+  .panel button:hover { background: #202a3f; }
+  .panel button:active { transform: scale(.97); }
+  #soundClose { width: 100%; margin-top: var(--sp-4); }
+
+  #customPanel .panel { text-align: center; }
+  #customSlider {
+    appearance: none; -webkit-appearance: none; width: 100%; height: 6px;
+    margin: var(--sp-4) 0 var(--sp-2); border-radius: 999px;
+    background: var(--surface-2); border: 1px solid var(--border-2);
+  }
+  #customSlider::-webkit-slider-thumb {
+    appearance: none; -webkit-appearance: none;
+    width: 26px; height: 26px; border-radius: 50%;
+    background: var(--primary); border: 3px solid #0a0e14;
+    box-shadow: 0 0 0 2px var(--primary), var(--shadow-1); cursor: pointer;
+  }
+  #customSlider::-moz-range-thumb {
+    width: 22px; height: 22px; border-radius: 50%;
+    background: var(--primary); border: 3px solid #0a0e14;
+    box-shadow: 0 0 0 2px var(--primary); cursor: pointer;
+  }
+  #customValue {
+    display: block; margin: var(--sp-3) 0 var(--sp-4);
+    font-size: 26px; font-weight: 800; letter-spacing: .02em;
+    font-variant-numeric: tabular-nums;
+  }
+  #customPanel .panel button { margin: 0 var(--sp-1); }
+  #customApply { color: #06122b; background: linear-gradient(180deg,#60a5fa,var(--primary)); border-color: #2563eb; }
+
+  /* ============ PWA install button + update toast ============ */
+  #installBtn {
+    color: #06122b;
+    background: linear-gradient(180deg, #60a5fa, var(--primary));
+    border-color: #2563eb;
+  }
+  #installBtn:hover { background: linear-gradient(180deg, #7cb1fb, #2f76e6); }
+  #installBtn[hidden] { display: none; }
+
+  #swToast {
+    position: fixed; z-index: 200; left: 50%;
+    bottom: calc(16px + env(safe-area-inset-bottom));
+    transform: translateX(-50%);
+    display: flex; align-items: center; gap: var(--sp-3);
+    padding: var(--sp-3) var(--sp-4);
+    background: var(--surface); border: 1px solid var(--border-2);
+    border-radius: var(--radius); box-shadow: var(--shadow-3);
+    font-size: 14px; font-weight: 600; white-space: nowrap;
+    opacity: 0; pointer-events: none; transition: opacity .25s var(--ease);
+  }
+  #swToast.show { opacity: 1; pointer-events: auto; }
+  #swToast button {
+    min-height: 36px; padding: 0 var(--sp-4);
+    border-radius: var(--radius-sm); font-weight: 800; font-size: 14px;
+    color: #06122b; background: var(--active);
+  }
+  #swToast button:active { transform: scale(.97); }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; }
+  }
+</style>
+</head>
+<body>
+  <div id="app">
+    <div id="top">
+      <button class="tool" id="pauseBtn" title="Pause" aria-label="Pause">⏸</button>
+      <button class="tool" id="thresholdBtn" title="Threshold" aria-label="Threshold">1:00</button>
+      <button class="tool" id="resetBtn" title="Reset" aria-label="Reset">↺</button>
+      <button class="tool" id="soundBtn" title="Sound" aria-label="Sound">♪</button>
+      <button class="tool" id="fsBtn" title="Fullscreen" aria-label="Fullscreen">⛶</button>
+      <button class="tool" id="hideBtn" title="Hide menu" aria-label="Hide menu">▲</button>
+      <button class="tool" id="installBtn" title="Install app" aria-label="Install app" hidden>⬇</button>
+    </div>
+
+    <div id="main">
+      <section class="side" id="side0">
+        <div class="side-inner">
+          <div class="active-label">ACTIVE</div>
+          <div class="hp-row">
+            <button class="hp-btn minus" aria-label="Decrease HP">−</button>
+            <div class="hp">20</div>
+            <button class="hp-btn plus" aria-label="Increase HP">+</button>
+          </div>
+          <div class="lives"></div>
+          <div class="clocks">
+            <div class="total">00:00</div>
+            <div class="debt">0:00</div>
+          </div>
+          <div class="gameover"></div>
+        </div>
+        <button class="rotate" aria-label="Rotate">⟳</button>
+      </section>
+
+      <section class="side" id="side1">
+        <div class="side-inner">
+          <div class="active-label">ACTIVE</div>
+          <div class="hp-row">
+            <button class="hp-btn minus" aria-label="Decrease HP">−</button>
+            <div class="hp">20</div>
+            <button class="hp-btn plus" aria-label="Increase HP">+</button>
+          </div>
+          <div class="lives"></div>
+          <div class="clocks">
+            <div class="total">00:00</div>
+            <div class="debt">0:00</div>
+          </div>
+          <div class="gameover"></div>
+        </div>
+        <button class="rotate" aria-label="Rotate">⟳</button>
+      </section>
+    </div>
+
+    <button id="revealBtn" title="Show menu" aria-label="Show menu">☰</button>
+
+    <div id="soundPanel">
+      <div class="panel">
+        <h3>Settings</h3>
+        <label class="row"><span>Mute all</span><input type="checkbox" id="muteAll"></label>
+        <label class="row"><span>Mute pass tones</span><input type="checkbox" id="mutePass"></label>
+        <label class="row"><span>Mute countdown</span><input type="checkbox" id="muteCountdown"></label>
+        <label class="row"><span>Start with menu hidden</span><input type="checkbox" id="hideDefault"></label>
+        <button id="soundClose">Close</button>
+      </div>
+    </div>
+
+    <div id="customPanel">
+      <div class="panel">
+        <h3>Custom threshold</h3>
+        <input type="range" id="customSlider" min="5" max="600" step="1" value="60">
+        <div id="customValue">1:00s</div>
+        <div>
+          <button id="customApply">Apply</button>
+          <button id="customClose">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="swToast" role="status" aria-live="polite">
+      <span>Update available</span>
+      <button id="swReload">Reload</button>
+    </div>
+  </div>
+
+<script>
+  const PRESETS = [30, 60, 120, 180, 240, 300, 600];
+
+  const sideEls = [
+    document.getElementById("side0"),
+    document.getElementById("side1")
+  ];
+
+  const app = document.getElementById("app");
+  const thresholdBtn = document.getElementById("thresholdBtn");
+  const pauseBtn = document.getElementById("pauseBtn");
+  const resetBtn = document.getElementById("resetBtn");
+  const soundBtn = document.getElementById("soundBtn");
+  const fsBtn = document.getElementById("fsBtn");
+  const hideBtn = document.getElementById("hideBtn");
+  const revealBtn = document.getElementById("revealBtn");
+
+  const soundPanel = document.getElementById("soundPanel");
+  const customPanel = document.getElementById("customPanel");
+
+  const customSlider = document.getElementById("customSlider");
+  const customValue = document.getElementById("customValue");
+
+  const muteAll = document.getElementById("muteAll");
+  const mutePassEl = document.getElementById("mutePass");
+  const muteCountEl = document.getElementById("muteCountdown");
+  const hideDefault = document.getElementById("hideDefault");
+
+  function makePlayer() {
+    return { total: 0, lives: 5, hp: 20, rotation: 0 };
+  }
+
+  let players = [makePlayer(), makePlayer()];
+  let active = null;
+  let debt = 0;
+  let threshold = 60;
+  let gameOver = false;
+  let winner = null;
+  let paused = false;
+
+  let soundMuted = false;
+  let mutePass = false;
+  let muteCountdown = false;
+  let storedPass = false;
+  let storedCountdown = false;
+
+  let audioCtx = null;
+  let firstGestureDone = false;
+
+  function fmt(s) {
+    s = Number(s);
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  }
+  function fmtTotal(s) {
+    s = Number(s);
+    return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+  }
+  function getDebtPlayer() {
+    if (gameOver) return null;
+    if (debt > 0) return 0;
+    if (debt < 0) return 1;
+    return null;
+  }
+
+  function updateSideTransform(i) {
+    const side = sideEls[i];
+    const inner = side.querySelector(".side-inner");
+    const rot = players[i].rotation;
+    const w = side.clientWidth, h = side.clientHeight;
+    if (rot % 180 === 90) { inner.style.width = h + "px"; inner.style.height = w + "px"; }
+    else { inner.style.width = w + "px"; inner.style.height = h + "px"; }
+    inner.style.transform = `translate(-50%, -50%) rotate(${rot}deg)`;
+  }
+
+  function render() {
+    const debtPlayer = getDebtPlayer();
+    const absDebt = Math.abs(debt);
+    const DARK = "#0b1220", LIGHT = "#f8fafc";
+
+    for (let i = 0; i < 2; i++) {
+      const side = sideEls[i], p = players[i];
+      side.querySelector(".hp").textContent = p.hp;
+      side.querySelectorAll(".life").forEach((el, idx) => el.classList.toggle("lost", idx >= p.lives));
+      side.querySelector(".total").textContent = fmtTotal(p.total);
+
+      const isDebt = !gameOver && debtPlayer === i;
+      side.querySelector(".debt").textContent = isDebt ? "+" + fmt(absDebt) : "0:00";
+
+      side.classList.toggle("active", active === i && !gameOver);
+      side.classList.toggle("winner", gameOver && winner === i);
+      side.classList.toggle("loser", gameOver && winner !== i);
+      side.querySelector(".gameover").textContent = gameOver ? (winner === i ? "WINNER" : "LOSER") : "";
+
+      let bg, ink;
+      if (gameOver) {
+        bg = winner === i ? "#e7f6e7" : "#fde7e7";
+        ink = DARK;
+      } else if (isDebt) {
+        const ratio = Math.max(0, Math.min(1, absDebt / threshold));
+        const hue = 120 - 120 * ratio;
+        const sat = 70 + 20 * ratio;
+        const light = 52 - 10 * ratio;
+        bg = `hsl(${hue} ${sat}% ${light}%)`;
+        ink = light > 49 ? DARK : LIGHT;
+      } else {
+        bg = "hsl(120 70% 52%)";
+        ink = DARK;
+      }
+
+      side.style.setProperty("--side-bg", bg);
+      side.style.setProperty("--side-ink", ink);
+      updateSideTransform(i);
+    }
+
+    thresholdBtn.textContent = fmt(threshold);
+    pauseBtn.textContent = paused ? "▶" : "⏸";
+    pauseBtn.title = paused ? "Resume" : "Pause";
+    pauseBtn.setAttribute("aria-label", paused ? "Resume" : "Pause");
+  }
+
+  function setActive(i) {
+    if (gameOver) return;
+    active = (active === i) ? 1 - i : i;
+    if (paused) paused = false;   // tapping a player area while paused resumes the clock
+    playPass(active);
+    render();
+  }
+  function togglePause() { if (gameOver) return; paused = !paused; render(); }
+  function resetGame() {
+    players = [makePlayer(), makePlayer()];
+    active = null; debt = 0; gameOver = false; winner = null; paused = false;
+    render();
+  }
+  function cycleThreshold() {
+    if (gameOver) return;
+    const idx = PRESETS.indexOf(threshold);
+    threshold = idx === -1 ? PRESETS[0] : PRESETS[(idx + 1) % PRESETS.length];
+    render();
+  }
+  function openCustomPanel() {
+    if (gameOver) return;
+    customSlider.value = threshold;
+    customValue.textContent = fmt(threshold) + "s";
+    customPanel.style.display = "flex";
+  }
+  function openPanel(p) { p.style.display = "flex"; }
+  function closePanel(p) { p.style.display = "none"; }
+
+  function ensureAudio() {
+    if (!audioCtx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) { try { audioCtx = new AC(); } catch (e) { audioCtx = null; } }
+    }
+    if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
+  }
+  function tone(freq, duration, type = "sine", peak = 0.12) {
+    if (soundMuted || !audioCtx) return;
+    if (audioCtx.state === "suspended") audioCtx.resume();
+    if (audioCtx.state !== "running") return;
+    const t = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator(), gain = audioCtx.createGain();
+    osc.type = type; osc.frequency.setValueAtTime(freq, t);
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    gain.gain.setValueAtTime(0, t);
+    gain.gain.linearRampToValueAtTime(peak, t + 0.01);
+    gain.gain.setValueAtTime(peak, t + Math.max(0.01, duration - 0.02));
+    gain.gain.linearRampToValueAtTime(0, t + duration);
+    osc.start(t); osc.stop(t + duration + 0.05);
+  }
+  function playPass(i) { if (soundMuted || mutePass) return; tone(i === 0 ? 660 : 440, 0.12, "sine", 0.10); }
+
+  /* ===== Classic countdown: rising short beeps for 10→1, long beep for the final second ===== */
+  function playCountdown(remaining) {
+    if (soundMuted || muteCountdown) return;
+    // remaining 10 -> low, 1 -> high: accelerating "launch" feel
+    const freq = 480 + (10 - remaining) * 72;   // 480Hz .. 1128Hz
+    tone(freq, 0.11, "square", 0.09);
+  }
+  function playGo() {
+    if (soundMuted || muteCountdown) return;
+    tone(1250, 0.7, "square", 0.12);            // long sustained "GO" beep (1s -> 0)
+  }
+  function playLifeLost() {
+    if (soundMuted || muteCountdown) return;
+    tone(180, 0.4, "sine", 0.08);               // soft low thud under the GO beep
+  }
+
+  /* ============ Fullscreen (Android-safe) ============ */
+  function reqFS(el) {
+    const req = el.requestFullscreen
+      || el.webkitRequestFullscreen
+      || el.mozRequestFullScreen
+      || el.msRequestFullscreen;
+    if (!req) return Promise.reject(new Error("no fullscreen API"));
+    const p = req.call(el);
+    return (p && typeof p.then === "function") ? p : Promise.resolve(p);
+  }
+  function enterFullscreen() {
+    reqFS(document.getElementById("app"))
+      .catch(() => reqFS(document.documentElement))
+      .catch(() => reqFS(document.body))
+      .catch(() => { /* fullscreen unsupported/blocked; app keeps running normally */ });
+  }
+  function exitFullscreen() {
+    const exit = document.exitFullscreen
+      || document.webkitExitFullscreen
+      || document.mozCancelFullScreen
+      || document.msExitFullscreen;
+    if (exit) { try { exit.call(document); } catch (e) {} }
+  }
+  function isFullscreen() {
+    return document.fullscreenElement || document.webkitFullscreenElement
+        || document.mozFullScreenElement || document.msFullscreenElement;
+  }
+
+  function firstGesture(e) {
+    if (firstGestureDone) return;
+    if (e.target.closest && e.target.closest("#fsBtn")) return;
+    firstGestureDone = true;
+    ensureAudio();
+    enterFullscreen();
+    document.removeEventListener("click", firstGesture, true);
+  }
+
+  function buildLives() {
+    sideEls.forEach(side => {
+      const lives = side.querySelector(".lives");
+      lives.innerHTML = "";
+      for (let i = 0; i < 5; i++) { const d = document.createElement("div"); d.className = "life"; lives.appendChild(d); }
+    });
+  }
+
+  function updateSoundUI() {
+    muteAll.checked = soundMuted;
+    mutePassEl.checked = mutePass;
+    muteCountEl.checked = muteCountdown;
+    mutePassEl.disabled = soundMuted;
+    muteCountEl.disabled = soundMuted;
+  }
+
+  function tick() {
+    if (paused || gameOver || active === null) return;
+    players[active].total += 1;
+    if (active === 0) debt += 1; else debt -= 1;
+
+    const debtPlayer = getDebtPlayer();
+    const absDebt = Math.abs(debt);
+
+    if (debtPlayer !== null && absDebt >= threshold) {
+      // Final second (1 -> 0): long "GO" beep + life lost
+      players[debtPlayer].lives = Math.max(0, players[debtPlayer].lives - 1);
+      debt = 0;
+      playGo();
+      playLifeLost();
+      if (players[0].lives === 0 || players[1].lives === 0) {
+        gameOver = true;
+        winner = players[0].lives === 0 ? 1 : 0;
+      }
+    } else if (debtPlayer !== null && active === debtPlayer) {
+      const remaining = threshold - absDebt;
+      if (remaining > 0 && remaining <= 10) playCountdown(remaining);
+    }
+    render();
+  }
+
+  sideEls.forEach((side, i) => {
+    side.addEventListener("pointerdown", e => {
+      if (gameOver) return;
+      if (e.target.closest("button")) return;
+      setActive(i);
+    });
+    side.querySelector(".plus").addEventListener("pointerdown", e => {
+      e.preventDefault(); e.stopPropagation(); if (gameOver) return;
+      players[i].hp += 1; render();
+    });
+    side.querySelector(".minus").addEventListener("pointerdown", e => {
+      e.preventDefault(); e.stopPropagation(); if (gameOver) return;
+      players[i].hp = Math.max(0, players[i].hp - 1); render();
+    });
+    side.querySelector(".rotate").addEventListener("pointerdown", e => {
+      e.preventDefault(); e.stopPropagation(); if (gameOver) return;
+      players[i].rotation = (players[i].rotation + 90) % 360; updateSideTransform(i);
+    });
+  });
+
+  pauseBtn.addEventListener("pointerdown", e => { e.preventDefault(); e.stopPropagation(); togglePause(); });
+  resetBtn.addEventListener("pointerdown", e => { e.preventDefault(); e.stopPropagation(); resetGame(); });
+  soundBtn.addEventListener("pointerdown", e => { e.preventDefault(); e.stopPropagation(); openPanel(soundPanel); });
+
+  fsBtn.addEventListener("click", () => {
+    ensureAudio();
+    if (isFullscreen()) exitFullscreen();
+    else enterFullscreen();
+  });
+
+  function setMenuHidden(v) { app.classList.toggle("menu-hidden", v); }
+  hideBtn.addEventListener("pointerdown", e => {
+    e.preventDefault(); e.stopPropagation(); setMenuHidden(true);
+  });
+  revealBtn.addEventListener("pointerdown", e => {
+    e.preventDefault(); e.stopPropagation(); setMenuHidden(false);
+  });
+
+  let prefHidden = false;
+  try { prefHidden = localStorage.getItem("tdc_menuHidden") === "1"; } catch (e) {}
+  hideDefault.checked = prefHidden;
+  setMenuHidden(prefHidden);
+  hideDefault.addEventListener("change", () => {
+    try { localStorage.setItem("tdc_menuHidden", hideDefault.checked ? "1" : "0"); } catch (e) {}
+  });
+
+  let lpTimer = null, lpTriggered = false;
+  thresholdBtn.addEventListener("pointerdown", e => {
+    e.preventDefault(); e.stopPropagation(); if (gameOver) return;
+    lpTriggered = false; clearTimeout(lpTimer);
+    lpTimer = setTimeout(() => { lpTriggered = true; openCustomPanel(); }, 500);
+  });
+  thresholdBtn.addEventListener("pointerup", e => {
+    e.preventDefault(); e.stopPropagation(); clearTimeout(lpTimer);
+    if (!lpTriggered) cycleThreshold();
+  });
+  thresholdBtn.addEventListener("pointercancel", () => clearTimeout(lpTimer));
+
+  soundPanel.addEventListener("pointerdown", e => { e.stopPropagation(); if (e.target === soundPanel) closePanel(soundPanel); });
+  customPanel.addEventListener("pointerdown", e => { e.stopPropagation(); if (e.target === customPanel) closePanel(customPanel); });
+  document.getElementById("soundClose").addEventListener("pointerdown", e => { e.preventDefault(); e.stopPropagation(); closePanel(soundPanel); });
+  document.getElementById("customApply").addEventListener("pointerdown", e => {
+    e.preventDefault(); e.stopPropagation(); if (gameOver) return;
+    threshold = Number(customSlider.value); closePanel(customPanel); render();
+  });
+  document.getElementById("customClose").addEventListener("pointerdown", e => { e.preventDefault(); e.stopPropagation(); closePanel(customPanel); });
+  customSlider.addEventListener("input", () => { customValue.textContent = fmt(Number(customSlider.value)) + "s"; });
+
+  muteAll.addEventListener("change", () => {
+    if (muteAll.checked) {
+      storedPass = mutePass; storedCountdown = muteCountdown;
+      soundMuted = true; mutePass = true; muteCountdown = true;
+    } else {
+      soundMuted = false; mutePass = storedPass; muteCountdown = storedCountdown;
+    }
+    updateSoundUI();
+  });
+  mutePassEl.addEventListener("change", () => { if (mutePassEl.disabled) return; mutePass = mutePassEl.checked; });
+  muteCountEl.addEventListener("change", () => { if (muteCountEl.disabled) return; muteCountdown = muteCountEl.checked; });
+  updateSoundUI();
+
+  document.addEventListener("click", firstGesture, { capture: true });
+
+  const onResize = () => { updateSideTransform(0); updateSideTransform(1); };
+  window.addEventListener("resize", onResize);
+  ["fullscreenchange","webkitfullscreenchange","mozfullscreenchange","MSFullscreenChange"]
+    .forEach(ev => document.addEventListener(ev, onResize));
+  if (window.ResizeObserver) {
+    const ro = new ResizeObserver(onResize);
+    ro.observe(sideEls[0]); ro.observe(sideEls[1]);
+  }
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) onResize(); });
+
+  buildLives();
+  render();
+  setInterval(tick, 1000);
+
+  /* ============ PWA: install prompt + service worker ============ */
+  const installBtn = document.getElementById("installBtn");
+  const swToast = document.getElementById("swToast");
+  const swReload = document.getElementById("swReload");
+  let deferredPrompt = null;
+
+  function refreshInstallBtn() { installBtn.hidden = deferredPrompt === null; }
+
+  window.addEventListener("beforeinstallprompt", e => {
+    e.preventDefault();
+    deferredPrompt = e;
+    refreshInstallBtn();
+  });
+
+  installBtn.addEventListener("pointerdown", async e => {
+    e.preventDefault(); e.stopPropagation();
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    try { await deferredPrompt.userChoice; } catch (err) {}
+    deferredPrompt = null;
+    refreshInstallBtn();
+  });
+
+  window.addEventListener("appinstalled", () => {
+    deferredPrompt = null;
+    refreshInstallBtn();
+  });
+
+  swReload.addEventListener("pointerdown", e => {
+    e.preventDefault(); e.stopPropagation();
+    location.reload();
+  });
+
+  if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("sw.js").then(reg => {
+        reg.addEventListener("updatefound", () => {
+          const nw = reg.installing;
+          if (!nw) return;
+          nw.addEventListener("statechange", () => {
+            // A newer service worker has taken over: offer a reload.
+            if (nw.state === "installed" && navigator.serviceWorker.controller) {
+              swToast.classList.add("show");
+            }
+          });
+        });
+      }).catch(err => console.warn("Service worker registration failed:", err));
+    });
+  }
+
+  // Manifest shortcut deep link: index.html?action=reset starts a fresh duel.
+  try {
+    if (new URLSearchParams(location.search).get("action") === "reset") resetGame();
+  } catch (e) {}
+</script>
+</body>
+</html>
